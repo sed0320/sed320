@@ -1,0 +1,510 @@
+import os
+import time
+import numpy as np
+
+# Constants
+STEPX = 0.1
+STEPY = 0.1
+TK = 273.15
+
+# Global variables
+T = np.zeros((31, 31))
+teosb = {'st': 0}
+gekar = {'xx': 0, 'yy': 0}
+teos = {'cr': 0, 'lt': 0, 'st': 0, 't2': 0}
+z = 0
+hou = 0
+min = 0
+sec = 0
+korax = 0
+koray = 0
+Grska = 0
+ok = True
+
+def korax():
+    global korax
+    i = 29
+    while (T[i, 0] <= teosb['st']) and (i > 0):
+        i -= 1
+    i += 1
+    kx = STEPX * (29.5 - i)
+    if i == 29:
+        kx = STEPX / 2.0
+    if T[0, 0] < teosb['st']:
+        kx = gekar['xx'] * 0.5
+    if kx < 0.0:
+        kx = 0.0
+    korax = kx
+    return korax
+
+def koraxp():
+    global koraxp
+    i = 29
+    while (T[i, 0] <= teosb['st']) and (i > 0):
+        i -= 1
+    i += 1
+    kx = STEPX * (29.5 - i) + ((teosb['st'] - T[i, 0]) / (T[i, 0] - T[i + 1, 0])) * STEPX
+    if i == 30:
+        kx = 0.0
+    if i == 29:
+        kx = ((teosb['st'] - T[i, 0]) / (T[i, 0] - T[i + 1, 0])) * STEPX + STEPX * 0.5
+    if T[0, 0] < teosb['st']:
+        kx = gekar['xx'] * 0.5
+    if kx < 0.0:
+        kx = 0.0
+    koraxp = kx
+    return koraxp
+
+def koray():
+    global koray
+    i = 29
+    while (T[0, i] <= teosb['st']) and (i > 0):
+        i -= 1
+    i += 1
+    ky = STEPY * (29.5 - i)
+    if i == 29:
+        ky = STEPY / 2.0
+    if T[0, 0] < teosb['st']:
+        ky = gekar['yy'] * 0.5
+    if ky < 0.0:
+        ky = 0.0
+    koray = ky
+    return koray
+
+def korayp():
+    global korayp
+    i = 29
+    while (T[0, i] <= teosb['st']) and (i > 0):
+        i -= 1
+    i += 1
+    ky = STEPY * (29.5 - i) + ((teosb['st'] - T[0, i]) / (T[0, i] - T[0, i + 1])) * STEPY
+    if i == 30:
+        ky = 0.0
+    if i == 29:
+        ky = ((teosb['st'] - T[0, i]) / (T[0, i] - T[0, i + 1])) * STEPY + STEPY * 0.5
+    if T[0, 0] < teosb['st']:
+        ky = gekar['yy'] * 0.5
+    if ky < 0.0:
+        ky = 0.0
+    korayp = ky
+    return korayp
+
+def timec(hou, min, sec):
+    uksek = z * 60 / (teos['cr'] * 1000)
+    min = int(uksek / 60)
+    hou = int(min / 60)
+    min = min - hou * 60
+    sec = int(uksek) - min * 60 - hou * 3600
+
+    if hou > 99:
+        hou = 0
+    if min > 59:
+        min = 0
+    if sec > 59:
+        sec = 0
+
+    s8 = f"{hou:02}:{min:02}:{sec:02}"
+    return s8
+
+def bezuc(tbez):
+    return tbez * TK - 273.15
+
+def cubez(tcel):
+    return (tcel + 273.15) / TK
+
+def openTF(zone, st):
+    global Grska, ok
+    if (zone > 0) and (st == 'W'):
+        E = f'.ls{chr(zone + 47)}'
+        fname = os.path.join(os.getcwd(), E)
+        with open(fname, 'rb') as fls:
+            T = np.fromfile(fls, dtype=np.float32).reshape((31, 31))
+        Grska = os.system(f"file {fname}")
+        if Grska != 0:
+            ok = False
+
+    E = f'.tf{chr(zone + 48)}'
+    fname = os.path.join(os.getcwd(), E)
+    if st == 'W':
+        with open(fname, 'wb') as ftf:
+            pass
+    elif st == 'R':
+        with open(fname, 'rb') as ftf:
+            pass
+
+    if st == 'W':
+        E = f'.al{chr(zone + 48)}'
+        fnamealf = os.path.join(os.getcwd(), E)
+        with open(fnamealf, 'wb') as falf:
+            pass
+
+def ContinueCalc(nsl, zone):
+    global Grska
+    E = '.$ls'
+    fnametmp = os.path.join(os.getcwd(), E)
+    with open(fnametmp, 'rb') as ftm:
+        for i in range(31):
+            for j in range(31):
+                T[i, j] = np.fromfile(ftm, dtype=np.float32, count=1)
+        abc = np.fromfile(ftm, dtype=np.float32, count=1)
+        nsl = int(round(abc))
+        abc = np.fromfile(ftm, dtype=np.float32, count=1)
+        zone = int(round(abc))
+
+    Grska = os.system(f"file {fnametmp}")
+    if Grska != 0:
+        os.remove(fnametmp)
+
+    E = f'.tf{chr(zone + 48)}'
+    fname = os.path.join(os.getcwd(), E)
+    with open(fname, 'wb') as ftf:
+        pass
+
+    E = '.$tf'
+    fnametmp = os.path.join(os.getcwd(), E)
+    with open(fnametmp, 'rb') as ftmp:
+        while True:
+            try:
+                tfint = np.fromfile(ftmp, dtype=np.int32, count=31*31).reshape((31, 31))
+                with open(fname, 'ab') as ftf:
+                    tfint.tofile(ftf)
+            except EOFError:
+                break
+
+    Grska = os.system(f"file {fnametmp}")
+    if Grska != 0:
+        os.remove(fnametmp)
+
+def ContinueWrit(nsl, zone):
+    E = f'.tf{chr(zone + 48)}'
+    fname = os.path.join(os.getcwd(), E)
+    E = '.$tf'
+    fname = os.path.join(os.getcwd(), E)
+
+    if os.path.exists(fname):
+        os.remove(fname)
+    os.rename(ftf, fname)
+
+    fnametmp = os.path.join(os.getcwd(), '.$ls')
+    with open(fnametmp, 'wb') as ftm:
+        for i in range(31):
+            for j in range(31):
+                T[i, j].tofile(ftm)
+        abc = np.float32(nsl)
+        abc.tofile(ftm)
+        abc = np.float32(zone)
+        abc.tofile(ftm)
+
+    Grska = os.system(f"file {fnametmp}")
+    if Grska != 0:
+        os.remove(fnametmp)
+
+    E = f'.ls{chr(zone + 48)}'
+    fname = os.path.join(os.getcwd(), E)
+    os.remove(fname)
+
+def closeTF(zone):
+    global Grska
+    E = f'.ls{chr(zone + 48)}'
+    fname = os.path.join(os.getcwd(), E)
+    with open(fname, 'wb') as fls:
+        T.tofile(fls)
+
+    Grska = os.system(f"file {fname}")
+    if Grska != 0:
+        pass
+    else:
+        pass
+
+def writeTF():
+    tfint = np.round(bezuc(T) * 20.0).astype(np.int32)
+    with open(ftf, 'ab') as ftf:
+        tfint.tofile(ftf)
+
+def readTF():
+    global T
+    tfint = np.fromfile(ftf, dtype=np.int32, count=31*31).reshape((31, 31))
+    T = cubez(tfint / 20.0)
+
+def writesl():
+    print(f"{'':<15}{z:6.0f}{'':<15}{zone:2}{'':<6}{n:6}{'':<12}{korax:6.2f}{'':<12}{koray:6.2f}{'':<12}{timec(hou, min, sec)}")
+    for j in range(11):
+        print(f"{'':<10}", end='')
+        for i in range(11):
+            if i < 10 and j < 10:
+                print(f"{bezuc(T[i*3, j*3]):4.0f}. ", end='')
+            else:
+                if i == 10:
+                    if j < 10:
+                        print(f"{bezuc((T[29, j*3] + T[30, j*3]) * 0.5):4.0f}. ", end='')
+                    else:
+                        print(f"{bezuc(T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[29, 30] * 0.25):4.0f}. ", end='')
+                else:
+                    print(f"{bezuc((T[i*3, 29] + T[i*3, 30]) * 0.5):4.0f}. ", end='')
+        print()
+
+def writesim(zone, nos, tei, tre, mendis, kr, lkr, pict):
+    def sdr(a, b, c):
+        return f"{a:{b}.{c}f}"
+
+    def sdi(a, b):
+        return f"{a:{b}d}"
+
+    boja(green, black)
+    tei = np.fromfile(ftf, dtype=np.float32).reshape((31, 31))
+
+    for j in range(31):
+        for i in range(31):
+            T[i, j] = cubez(0.05 * tei[i, j])
+            tre[i, j] = 0.05 * tei[i, j]
+
+    tre[30, 30] = T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[30, 29] * 0.25
+
+    for i in range(30):
+        tre[30, j] = (tre[30, j] + tre[29, j]) * 0.5
+        tre[j, 30] = (tre[j, 30] + tre[j, 29]) * 0.5
+
+    grafika(tre, teos['lt'], teos['st'], teos['t2'], 30, 30, pict)
+
+    if zone < 7:
+        if lkr != kr:
+            setlinestyle(solidln, 0x0000, 3)
+            setcolor(red)
+            diokr((getmaxx() // 2), (getmaxy() // 2) - 64, kr, 270, (getmaxy() // 2) + 31)
+            diokr((getmaxx() // 2), (getmaxy() // 2) - 64, kr, 270, (getmaxy() // 2) + 34)
+            diokr((getmaxx() // 2), (getmaxy() // 2) - 64, kr, 270, (getmaxy() // 2) + 37)
+    else:
+        if lkr != kr:
+            setlinestyle(solidln, 0x0000, 3)
+            setcolor(red)
+            line((getmaxx() // 2), getmaxy() - 31, (getmaxx() // 2) + kr, getmaxy() - 28)
+            line((getmaxx() // 2), getmaxy() - 31, (getmaxx() // 2) + kr, getmaxy() - 31)
+            line((getmaxx() // 2), getmaxy() - 31, (getmaxx() // 2) + kr, getmaxy() - 34)
+
+    lkr = kr
+
+    setfillstyle(solidfill, black)
+    bar((getmaxx() // 2) + 102, 42, (getmaxx() // 2) + 174, 96)
+    bar((getmaxx() // 2) + 150, (getmaxy() // 2) - 36, (getmaxx() // 2) + 198, (getmaxy() // 2) - 15)
+    setcolor(white)
+    outtextxy((getmaxx() // 2) + 102, 42, sdr(mendis, 6, 0))
+    outtextxy((getmaxx() // 2) + 110, 66, sdi(nos, 2))
+    outtextxy((getmaxx() // 2) + 110, 54, sdi(zone, 2))
+    outtextxy((getmaxx() // 2) + 110, 78, timec(hou, min, sec))
+    outtextxy((getmaxx() // 2) + 150, (getmaxy() // 2) - 36, sdr(koraxp, 6, 2))
+    outtextxy((getmaxx() // 2) + 150, (getmaxy() // 2) - 24, sdr(korayp, 6, 2))
+
+def writecsl(zone, ft, nos, tei, tre, mendis, izlaz):
+    izlaz = False
+    tei = np.fromfile(ftf, dtype=np.float32).reshape((31, 31))
+    print(' Press <Esc> or <Q> for Quit and Wait! ')
+    for j in range(31):
+        for i in range(31):
+            T[i, j] = cubez(0.05 * tei[i, j])
+            tre[i, j] = 0.05 * tei[i, j]
+
+    tre[30, 30] = T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[29, 30] * 0.25
+
+    for i in range(30):
+        tre[30, j] = (tre[30, j] + tre[29, j]) * 0.5
+        tre[j, 30] = (tre[j, 30] + tre[j, 29]) * 0.5
+
+    ft.write(f"\x1B[M{COMPON}\n")
+    ft.write("R E S U L T S   O F   C A L C U L A T I O N\n\n")
+    ft.write(f"Input Data: {fnind:11}\n")
+    ft.write(f"Steel grade: {cel:9}\n")
+    ft.write(f"Casting Speed: {teos['cr']:4.2f} [m/min]\n")
+    ft.write(f"Billet Dimension: {gekar['xx']:4.0f} x {gekar['yy']:4.0f} [mm]\n\n")
+    ft.write(f"Zone: {zone:4}\n")
+    ft.write(f"Slice: {nos:6}\n")
+    ft.write(f"Distance from meniscus: {mendis:6.0f} [mm]\n")
+    ft.write(f"Time: {timec(hou, min, sec):10} [hh.mm.ss]\n")
+    ft.write(f"Shell tickness in X-direction: {koraxp:6.2f} [mm]\n")
+    ft.write(f"Shell tickness in Y-direction: {korayp:6.2f} [mm]\n")
+    ft.write(f"\x1B[M{COMPON}\n\n")
+    ft.write("Temperature distribution in cross section quarter of billet:\n\n")
+
+    ft.write("Center\t")
+    for i in range(31):
+        ft.write(f"{i}\t")
+    ft.write("\n")
+
+    for j in range(31):
+        ft.write(f"{j}\t")
+        for i in range(31):
+            if i < 30 and j < 30:
+                ft.write(f"{bezuc(T[i, j]):4.0f}\t")
+            else:
+                if i == 30:
+                    if j < 30:
+                        ft.write(f"{bezuc((T[29, j] + T[30, j]) * 0.5):4.0f}\t")
+                    else:
+                        ft.write(f"{bezuc(T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[29, 30] * 0.25):4.0f}\t")
+                else:
+                    ft.write(f"{bezuc((T[i, 29] + T[i, 30]) * 0.5):4.0f}\t")
+        ft.write("\n")
+    ft.write("\f")
+
+    ch = '?'
+    if keypressed():
+        ch = readkey()
+
+    while keypressed():
+        ch = readkey()
+
+    if ch in [ESC, 'Q', 'q']:
+        izlaz = True
+
+def writepsl(zone, ft, nos, tei, tre, mendis, izlaz):
+    izlaz = False
+    tei = np.fromfile(ftf, dtype=np.float32).reshape((31, 31))
+
+    for j in range(31):
+        for i in range(31):
+            T[i, j] = cubez(0.05 * tei[i, j])
+            tre[i, j] = 0.05 * tei[i, j]
+
+    tre[30, 30] = T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[29, 30] * 0.25
+
+    for i in range(30):
+        tre[30, j] = (tre[30, j] + tre[29, j]) * 0.5
+        tre[j, 30] = (tre[j, 30] + tre[j, 29]) * 0.5
+
+    ft.write(f"\x1B[M{COMPON}\n")
+    ft.write("R E S U L T S   O F   C A L C U L A T I O N\n\n")
+    ft.write(f"Input Data: {fnind:11}\n")
+    ft.write(f"Steel grade: {cel:9}\n")
+    ft.write(f"Casting Speed: {teos['cr']:4.2f} [m/min]\n")
+    ft.write(f"Billet Dimension: {gekar['xx']:4.0f} x {gekar['yy']:4.0f} [mm]\n\n")
+    ft.write(f"Zone: {zone:4}\n")
+    ft.write(f"Slice: {nos:6}\n")
+    ft.write(f"Distance from meniscus: {mendis:6.0f} [mm]\n")
+    ft.write(f"Time: {timec(hou, min, sec):10} [hh.mm.ss]\n")
+    ft.write(f"Shell tickness in X-direction: {koraxp:6.2f} [mm]\n")
+    ft.write(f"Shell tickness in Y-direction: {korayp:6.2f} [mm]\n\n")
+    ft.write("I,J-Grid Point; T(I,J)-Point Temperature\n\n")
+    ft.write("I       J       T(I,J)\n\n")
+    for j in range(31):
+        for i in range(31):
+            if i < 30 and j < 30:
+                ft.write(f"{i}\t{j}\t{bezuc(T[i, j]):4.0f}\n")
+            else:
+                if i == 30:
+                    if j < 30:
+                        ft.write(f"{i}\t{j}\t{bezuc((T[29, j] + T[30, j]) * 0.5):4.0f}\n")
+                    else:
+                        ft.write(f"{i}\t{j}\t{bezuc(T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[29, 30] * 0.25):4.0f}\n")
+                else:
+                    ft.write(f"{i}\t{j}\t{bezuc((T[i, 29] + T[i, 30]) * 0.5):4.0f}\n")
+    ft.write("\f")
+
+    ch = '?'
+    if keypressed():
+        ch = readkey()
+
+    while keypressed():
+        ch = readkey()
+
+    if ch in [ESC, 'Q', 'q']:
+        izlaz = True
+
+def writecssl(zone, nos, tei, tre, mendis, izlaz):
+    izlaz = False
+    tei = np.fromfile(ftf, dtype=np.float32).reshape((31, 31))
+    for j in range(31):
+        for i in range(31):
+            T[i, j] = cubez(0.05 * tei[i, j])
+            tre[i, j] = 0.05 * tei[i, j]
+
+    tre[30, 30] = T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[29, 30] * 0.25
+
+    for i in range(30):
+        tre[30, j] = (tre[30, j] + tre[29, j]) * 0.5
+        tre[j, 30] = (tre[j, 30] + tre[j, 29]) * 0.5
+
+    print(f"{mendis:6.0f}{'':<15}{zone:2}{'':<6}{nos:6}{'':<12}{koraxp:6.2f}{'':<12}{korayp:6.2f}{'':<12}{timec(hou, min, sec)}")
+
+    for j in range(11):
+        print(f"{'':<10}", end='')
+        for i in range(11):
+            if i < 10 and j < 10:
+                print(f"{bezuc(T[i*3, j*3]):4.0f}. ", end='')
+            else:
+                if i == 10:
+                    if j < 10:
+                        print(f"{bezuc((T[29, j*3] + T[30, j*3]) * 0.5):4.0f}. ", end='')
+                    else:
+                        print(f"{bezuc(T[29, 29] * 0.5 + T[29, 30] * 0.25 + T[29, 30] * 0.25):4.0f}. ", end='')
+                else:
+                    print(f"{bezuc((T[i*3, 29] + T[i*3, 30]) * 0.5):4.0f}. ", end='')
+        print()
+
+    print(' Press <P> for Pause, <ESC> for Quit ')
+
+    ch = '?'
+    if keypressed():
+        ch = readkey()
+
+    while keypressed():
+        ch = readkey()
+
+    if ch in ['P', 'p']:
+        print('      Press any Key to Continue      ')
+        while not keypressed():
+            pass
+
+    if ch in [ESC, 'Q', 'q']:
+        izlaz = True
+
+def writeslsl():
+    kumx, kumy = 0.0, 0.0
+    print('                                                                            ͻ')
+    print(' Cast. Speed    Distance     Zone   Slice   Shell thickness  [mm]     Time    ')
+    print('   [m/min]   fr')
+    print('                                                                            ͼ')
+
+def saveopt():
+    pass
+
+def loadopt():
+    pass
+
+def initopt():
+    pass
+
+def secsum():
+    pass
+
+def drawse(zone, stm, nos, tei, tre, mendis, prvi, pict):
+    pass
+
+def dijbg(stm):
+    pass
+
+def demo():
+    pass
+
+def diokr(xcentra, ycentra, pocugao, krajugao, radijus):
+    pass
+
+def grafika(ff, gg, sg, dg, dx, dy, picture):
+    pass
+
+def Nacrtaj_poz_ekr():
+    pass
+
+def stessi(a):
+    pass
+
+def exchange(a, b):
+    a, b = b, a
+
+def rad(a):
+    return np.radians(a)
+
+def ZDiagram(hight):
+    pass
+
+def kruzici():
+    pass
+
